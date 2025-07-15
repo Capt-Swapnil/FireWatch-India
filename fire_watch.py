@@ -82,8 +82,8 @@ if not fire_df.empty:
     st.success(f"Fetched {len(fire_df)} fire records in the last 24 hours.")
 
     if show_map:
-        st.subheader("🗺️ Fire Locations")
-        default_lat, default_lon = 20.5937, 78.9629
+        st.subheader("Fire Locations")
+        default_lat, default_lon = 20.5937, 78.9629 // gave a default location to manage edge case
         if user_lat is not None:
             center_lat = user_lat
         else: 
