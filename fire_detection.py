@@ -9,10 +9,6 @@ from geopy.distance import geodesic
 from geopy.extra.rate_limiter import RateLimiter
 from geopy.exc import GeocoderRateLimited
 
-
-NASA_FIRMS_URL = (
-    "https://firms.modaps.eosdis.nasa.gov/api/country/csv/viirs"
-)
 def get_fire_data():
     url = 'https://firms.modaps.eosdis.nasa.gov/api/area/csv/' + '68be5f1e11a8b3a2bda31093ae7278fc' + '/VIIRS_NOAA20_NRT/68,6,97,37/3'
     try:
