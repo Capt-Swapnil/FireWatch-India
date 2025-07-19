@@ -4,11 +4,15 @@ import requests
 import folium
 from streamlit_folium import st_folium
 from datetime import date, timedelta, time
-from geopy import Nominatim
+from geopy.geocoders import Nominatim
 from geopy.distance import geodesic 
 from geopy.extra.rate_limiter import RateLimiter
 from geopy.exc import GeocoderRateLimited
+import time
 
+NASA_FIRMS_URL = (
+    "https://firms.modaps.eosdis.nasa.gov/api/country/csv/viirs"
+)
 def get_fire_data():
     url = 'https://firms.modaps.eosdis.nasa.gov/api/area/csv/' + '68be5f1e11a8b3a2bda31093ae7278fc' + '/VIIRS_NOAA20_NRT/68,6,97,37/3'
     try:
@@ -58,7 +62,7 @@ def geocode_location(district, city, state, country):
     print("Geocoding failed due to rate limits.")
     return None, None
 
-user_lat, user_lon = geocode_location(district, city, state, country)
+
 
 def filter_nearby_fires(df, user_lat, user_lon, radius_km=50):
     filtered = []
@@ -73,62 +77,65 @@ def filter_nearby_fires(df, user_lat, user_lon, radius_km=50):
             continue
     return pd.DataFrame(filtered)
 
+if all([district, city, state, country]):
+    user_lat, user_lon = geocode_location(district, city, state, country)
+    fire_df = get_fire_data()
 
-fire_df = get_fire_data()
-if user_lat and user_lon:
-    fire_df = filter_nearby_fires(fire_df, user_lat, user_lon, radius_km=400)
+    if user_lat is not None and user_lon is not None:
+        fire_df = filter_nearby_fires(fire_df, user_lat, user_lon, radius_km=50)
 
-if not fire_df.empty:
-    st.success(f"Fetched {len(fire_df)} fire records in the last 24 hours.")
+        if not fire_df.empty:
+            st.success(f"🔥 Fetched {len(fire_df)} fire records near your location in the last 24 hours.")
 
-    if show_map:
-        st.subheader("Fire Locations")
-        default_lat, default_lon = 20.5937, 78.9629 // gave a default location to manage edge case
-        if user_lat is not None:
-            center_lat = user_lat
-        else: 
-            center_lat = default_lat
-        if user_lon is not None:
-            center_lon = user_lon
+            if show_map:
+                st.subheader("🗺️ Fire Locations")
+                if user_lat is not None and user_lon is not None:
+                    m = folium.Map(location=[user_lat, user_lon], zoom_start=6)
+                else:
+                    st.warning("Please enter a valid location")
+
+                locations = []
+
+                for _, row in fire_df.iterrows():
+                    try:
+                        lat = float(row['latitude'])
+                        lon = float(row['longitude'])
+
+                        if not (pd.isna(lat) or pd.isna(lon)):
+                            loc = [lat, lon]
+                            locations.append(loc)
+
+                            folium.CircleMarker(
+                                location=loc,
+                                radius=5,
+                                color='red' if row.get('bright_ti4', 0) > 360 else 'orange',
+                                fill=True,
+                                fill_color='red' if row.get('bright_ti4', 0) > 360 else 'orange',  
+                                fill_opacity=0.6,
+                                tooltip=f"Brightness: {row.get('bright_ti4', 'N/A')}"
+                            ).add_to(m)
+                    except:
+                        continue
+
+                if locations:
+                    m.fit_bounds(locations)
+
+                st_data = st_folium(m, width=1200, height=600)
+                st.subheader("🚨 Fire Severity Alert")
+                severe_fires = fire_df[fire_df['bright_ti4'] > 360]
+                if len(severe_fires) > 50:
+                    st.error("🔴 Severe fire risk detected in the region! Be careful , kindly evacuate the place ASAP!")
+                elif len(severe_fires) > 10:
+                    st.warning("🟠 Moderate fire activity detected. There's low chance of fire but , call your nearest fire station!")
+                else:
+                    st.success("🟢 Low fire risk currently. It's safe to visit the place! ")
+
         else:
-            center_lon = default_lon
-
-        m = folium.Map(location=[center_lat, center_lon], zoom_start=6)
-
-        locations = []
-
-        for _, row in fire_df.iterrows():
-            try:
-                lat = float(row['latitude'])
-                lon = float(row['longitude'])
-
-                if not (pd.isna(lat) or pd.isna(lon)):
-                    loc = [lat, lon]
-                    locations.append(loc)
-
-                    folium.CircleMarker(
-                        location=loc,
-                        radius=5,
-                        color='red' if row.get('bright_ti4', 0) > 360 else 'orange',
-                        fill=True,
-                        fill_opacity=0.6,
-                        tooltip=f"Brightness: {row.get('bright_ti4', 'N/A')}"
-                    ).add_to(m)
-            except:
-                continue
-
-        if locations:
-            m.fit_bounds(locations)
-
-        st_data = st_folium(m, width=1200, height=600)
-
-    st.subheader("🚨 Fire Severity Alert")
-    severe_fires = fire_df[fire_df['bright_ti4'] > 360]
-    if len(severe_fires) > 50:
-        st.error("🔴 Severe fire risk detected in the region! Be careful , kindly evacuate the place ASAP!")
-    elif len(severe_fires) > 10:
-        st.warning("🟠 Moderate fire activity detected. There's low chance of fire but , call your nearest fire station!")
+            st.info("✅ No fire data available for the selected region in the last 24 hours.")
     else:
-        st.success("🟢 Low fire risk currently. It's safe to visit the place! ")
+        st.warning("⚠️ Could not locate the entered address. Please check your input.")
 else:
-    st.info("No fire data available for the selected region.")
+    st.info("📍 Please enter your full location details in the sidebar to begin.")
+
+
+
